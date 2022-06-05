@@ -1,10 +1,8 @@
 import torch
-from tqdm import tqdm
-import time
-
 from ddsmoothing import OptimizeSmoothingParameters, Certificate
-from .optimization import optimize_rancer
+from tqdm import tqdm
 
+from .optimization import optimize_rancer
 
 
 class OptimizeRANCERSmoothingParameters(OptimizeSmoothingParameters):
@@ -69,7 +67,7 @@ class OptimizeRANCERSmoothingParameters(OptimizeSmoothingParameters):
             )
 
     def run_optimization(
-            self, isotropic_thetas: torch.Tensor, output_folder: str,
+            self, isotropic_thetas: torch.Tensor, output_folder: str, rotation_matrices_folder: str,
             iterations: int, certificate: Certificate, lr: float = 0.04,
             num_samples: int = 100, regularization_weight: float = 2
     ):
@@ -80,58 +78,25 @@ class OptimizeRANCERSmoothingParameters(OptimizeSmoothingParameters):
                 input in batch
             output_folder (str): path to the folder where the thetas should be
                 saved
+            rotation_matrices_folder (str): path to the folder where the
+                rotation matrices should be saved
             iterations (int): number of iterations to run the optimization
             certificate (Certificate): instance of desired certification object
             lr (float, optional): optimization learning rate for ANCER
             num_samples (int): number of samples per input and iteration
             regularization_weight (float, optional): relaxation hyperparameter
         """
-        # a = 0
         for batch, _, idx in tqdm(self.loader):
-            # print("a = ", a)
-            # if a <= 56:
-            #   a += 1
-            #   continue
-            # a += 1
             batch = batch.to(self.device)
             thetas = torch.ones_like(batch) * \
                      isotropic_thetas[idx].reshape(-1, 1, 1, 1)
 
-            start = time.time()
             thetas, rotation_matrices = optimize_rancer(
                 self.model, batch, certificate, lr, thetas, iterations,
                 num_samples, kappa=regularization_weight,
                 device=self.device
             )
-            end = time.time()
-            print("rancer time: ", end - start)
-
-            print("here")
-            print("thetas: ", thetas.shape)
-            print("rotation_matrices: ", rotation_matrices.shape)
-
-
-            # # label = 3
-
-            # # =========================================
-            # smoothed_classifier = Smooth(self.model, 10, thetas, rotation_matrices, certificate)
-            # print("smoothed_classifier initialized")
-            # prediction, gap = smoothed_classifier.certify(batch, 100, 100, 0.001, 1)
-            # # correct = int(prediction == label)
-
-            # # Computing volumes http://oaji.net/articles/2014/1420-1415594291.pdf
-            # radius = thetas.min().item() * gap
-
-            # print("radius: ", radius)
-            # # print("correct: ", correct)
-            # # ff
-            # # =========================================
-
-
-
-            rotation_matrices_folder = r"../rotation_matrices_ce_loss"
 
             # save the optimized thetas
             self.save_theta(thetas.detach(), idx, output_folder)
             self.save_rotation_matrix(rotation_matrices.detach(), idx, rotation_matrices_folder)
-

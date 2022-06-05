@@ -6,8 +6,7 @@ from ddsmoothing.utils.models import load_model
 from ddsmoothing.certificate import L1Certificate, L2Certificate
 from ddsmoothing.optimize_dataset import OptimizeIsotropicSmoothingParameters
 
-# from rancer.optimize_dataset import OptimizeRANCERSmoothingParameters
-# from rancer.optimize_dataset import OptimizeRANCERSmoothingParameters
+
 from rancer.optimize_dataset import OptimizeRANCERSmoothingParameters
 
 if __name__ == "__main__":
@@ -31,8 +30,12 @@ if __name__ == "__main__":
         help="norm of the desired certificate"
     )
     parser.add_argument(
-        "--ancer-folder", required=True,
-        type=str, help="ancer folder for the optimized thetas"
+        "--rancer-folder", required=True,
+        type=str, help="rancer folder for the optimized thetas"
+    )
+    parser.add_argument(
+        "--matrices-folder", required=True,
+        type=str, help="rancer folder for the found rotation matrices"
     )
     parser.add_argument(
         "--isotropic-file", default=None,
@@ -129,12 +132,12 @@ if __name__ == "__main__":
     # open the isotropic file
     isotropic_thetas = torch.load(args.isotropic_file, map_location=device)
 
-    # now run the ancer optimization
+    # now run the rancer optimization
     rancer_obj = OptimizeRANCERSmoothingParameters(
         model, test_loader, device=device
     )
     rancer_obj.run_optimization(
-        isotropic_thetas, args.ancer_folder,
+        isotropic_thetas, args.rancer_folder, args.matrices_folder,
         args.ancer_iterations, certificate, args.ancer_learning_rate,
         args.ancer_num_samples, args.ancer_regularization_weight,
     )

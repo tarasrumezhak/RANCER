@@ -1,7 +1,7 @@
-import torch
 import numpy as np
-from torch.autograd import Variable
+import torch
 from ddsmoothing.certificate import Certificate
+from torch.autograd import Variable
 
 
 def optimize_rancer(
@@ -30,7 +30,7 @@ def optimize_rancer(
     batch_size = batch.shape[0]
     img_size = np.prod(batch.shape[1:])
 
-    isotropic_original = isotropic_theta.clone().cpu().detach().numpy()[:, 0, 0, 0]  # [0][0][0][0]
+    isotropic_original = isotropic_theta.clone().cpu().detach().numpy()[:, 0, 0, 0]
 
     min_bound = isotropic_original * 0.5
     max_bound = isotropic_original * 1.5
@@ -51,7 +51,6 @@ def optimize_rancer(
     initial_theta = theta.detach().clone()
 
     base_classifier_output = model(batch).argmax(1)
-    print("base_classifier_output: ", base_classifier_output)
 
     criterion = torch.nn.CrossEntropyLoss()
 
@@ -60,7 +59,6 @@ def optimize_rancer(
         return criterion(model(point)[0], base_classifier_output_local)
 
     hessian_batch = []
-
 
     for i, sample in enumerate(batch):
         base_classifier_output_local = base_classifier_output[i]  # [0][0]
@@ -79,18 +77,10 @@ def optimize_rancer(
     eig_val, eig_vec = torch.linalg.eigh(hessian_batch)
     R = eig_vec
 
-
     # reshape vectors to have ``samples`` per input in batch
     new_shape = [batch_size * samples]
     new_shape.extend(batch[0].shape)
     new_batch = batch.repeat((1, samples, 1, 1)).view(new_shape)
-
-    thetas_min = []
-    thetas_max = []
-    gaps = []
-    proxy_radiuses = []
-
-    iterations = 100
 
     # solve iteratively by projected gradient ascend
     for _ in range(iterations):
@@ -99,65 +89,28 @@ def optimize_rancer(
         # Reparameterization trick
         noise_orig = certificate.sample_noise(new_batch, theta_repeated)
 
-        # print("noise_orig shape: ", noise_orig.shape)
-        # print("noise_orig norm: ", torch.linalg.norm(noise_orig))
-
         noise = noise_orig.reshape((batch_size, samples, 3072))
-        # print("noise shape: ", noise.shape)
         noise_t = torch.transpose(noise, 2, 1)
         rotated_noise_t = torch.matmul(R, noise_t)
         rotated_noise = torch.transpose(rotated_noise_t, 2, 1)
         rotated_noise = rotated_noise.reshape((batch_size, samples, 3, 32, 32))
         rotated_noise = rotated_noise.reshape((batch_size * samples, 3, 32, 32))
 
-
-        # print("rotated_noise shape: ", rotated_noise.shape)
-        # print("rotated_noise norm: ", torch.linalg.norm(rotated_noise))
-        # ff
-        # print("rotated_noise shape: ", rotated_noise.shape)
-
-        # print("noise diff: ", torch.max(noise_orig - rotated_noise))
-
         out = model(
             new_batch + rotated_noise
         ).reshape(batch_size, samples, -1).mean(dim=1)
 
-        # plt.imshow(new_batch[0].detach().cpu().numpy())
-        # plt.show()
-
-        # plt.imshow(np.dstack((batch[0][0].cpu().detach().numpy(), batch[0][1].cpu().detach().numpy(), batch[0][2].cpu().detach().numpy())))
-        # plt.show()
-
-        # print("showed")
-
-
-        # print("out: ",  torch.round(out, decimals=3))
-
-        # out2 = model(
-        #     new_batch + noise_orig
-        # ).reshape(batch_size, samples, -1).mean(dim=1)
-        # print("out2: ",  torch.round(out2, decimals=3))
-
-        # smoothed_classifier = Smooth(model, 10, theta, R, certificate)
-        # counts = smoothed_classifier._sample_noise(batch, num=100, batch_size=1, device=device)
-        # print("counts: ", np.around(counts/100, decimals=3))
-
         vals, _ = torch.topk(out, 2)
         gap = certificate.compute_proxy_gap(vals)
 
-        # gaps.append(gap.detach().cpu())
-
         prod = torch.prod(
-            (theta.reshape(batch_size, -1))**(1/img_size), dim=1)
+            (theta.reshape(batch_size, -1)) ** (1 / img_size), dim=1)
         proxy_radius = prod * gap
 
-
-        # proxy_radiuses.append(proxy_radius.detach().cpu())
-
         radius_maximizer = - (
-            proxy_radius.sum() +
-            kappa *
-            (torch.min(theta.view(batch_size, -1), dim=1).values*gap).sum()
+                proxy_radius.sum() +
+                kappa *
+                (torch.min(theta.view(batch_size, -1), dim=1).values * gap).sum()
         )
         radius_maximizer.backward()
         optimizer.step()
@@ -167,44 +120,6 @@ def optimize_rancer(
         with torch.no_grad():
             torch.max(theta, initial_theta, out=theta)
 
-        # thetas_min.append(theta.min().detach().cpu())
-        # thetas_max.append(theta.max().detach().cpu())
-
-    # print("base_classifier_output: ", base_classifier_output)
-    # print("out: ", out.argmax(1))
-
-    # print("proxy_radius: ", proxy_radius, proxy_radius.sum())
-
-    # print("thetas_min: ", thetas_min)
-
-    # plt.plot(np.array(thetas_min))
-    # plt.title("Thetas min")
-    # # plt.show()
-    # plt.savefig("visual/thetas_min_identity5.png")
-    # plt.close()
-
-    # plt.plot(np.array(thetas_max))
-    # plt.title("Thetas max")
-    # # plt.show()
-    # plt.savefig("visual/thetas_max_identity5.png")
-    # plt.close()
-
-    # plt.plot(np.array(gaps))
-    # plt.title("Gaps")
-    # # plt.show()
-    # plt.savefig("visual/gaps_identity5.png")
-    # plt.close()
-
-    # plt.plot(np.array(proxy_radiuses))
-    # plt.title("Gaps")
-    # # plt.show()
-    # plt.savefig("visual/proxy_radiuses_identity5.png")
-    # plt.close()
-
-    # ff
-
-    theta = torch.clamp(theta, min=min_bound, max=max_bound)
-
-    # print("R before return: ", R.shape)
+        theta = torch.clamp(theta, min=min_bound, max=max_bound)
 
     return theta, R
